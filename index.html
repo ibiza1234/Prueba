@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1" />
 <title>Calculadora Taxi Ibiza</title>
 
-<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.css" />
 
 <style>
 body {
@@ -85,7 +85,7 @@ Solo se permiten direcciones dentro de la isla de Ibiza.<br>
 Precio orientativo. El importe final será el marcado por el taxímetro.
 </div>
 
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js"></script>
 
 <script>
 // ================= CONFIGURACIÓN =================
@@ -113,41 +113,63 @@ function debounce(fn, wait) {
   };
 }
 
-// ================= AUTOCOMPLETE =================
+// ================= FETCH HELPER =================
+async function fetchText(url) {
+  try {
+    const res = await fetch(url, { cache: 'no-store' });
+    const text = await res.text();
+    let json = null;
+    try { json = JSON.parse(text); } catch (e) { /* not JSON */ }
+    return { ok: res.ok, status: res.status, text, json, url };
+  } catch (err) {
+    console.error('[fetchText] fetch error', err);
+    return { ok: false, status: 0, text: String(err), json: null, url };
+  }
+}
+
+// ================= AUTOCOMPLETE (Photon -> try without bbox -> Nominatim) =================
 async function autocomplete(text, container, input) {
   container.innerHTML = "";
   container.setAttribute('aria-hidden', 'true');
   if (!text || text.length < 3) return;
 
-  const url =
-    "https://photon.komoot.io/api/?" +
-    "q=" + encodeURIComponent(text) +
-    "&limit=5" +
-    "&bbox=" + IBIZA_BBOX +
-    "&lang=es";
+  const renderMessage = msg => {
+    container.innerHTML = "";
+    const d = document.createElement('div');
+    d.className = 'small';
+    d.textContent = msg;
+    container.appendChild(d);
+    container.setAttribute('aria-hidden', 'false');
+  };
 
-  try {
-    const res = await fetch(url);
-    if (!res.ok) throw new Error("Error en geocodificador");
-    const data = await res.json();
-    if (!data.features || data.features.length === 0) {
-      const none = document.createElement("div");
-      none.textContent = "No hay resultados";
-      none.className = "small";
-      container.appendChild(none);
-      return;
-    }
+  const photonBase = 'https://photon.komoot.io/api/';
+  const paramsBase = (useBBox) => {
+    const sp = new URLSearchParams();
+    sp.set('q', text);
+    sp.set('limit', '5');
+    sp.set('lang', 'es');
+    if (useBBox) sp.set('bbox', `${LON_MIN},${LAT_MIN},${LON_MAX},${LAT_MAX}`);
+    return photonBase + '?' + sp.toString();
+  };
 
-    data.features.forEach(f => {
+  // Try Photon with bbox
+  let resp = await fetchText(paramsBase(true));
+  console.log('[autocomplete] Photon (with bbox) ->', resp.status, resp.url);
+  // If 400, try without bbox
+  if (!resp.ok && resp.status === 400) {
+    console.warn('[autocomplete] Photon returned 400 with bbox, trying without bbox');
+    resp = await fetchText(paramsBase(false));
+    console.log('[autocomplete] Photon (no bbox) ->', resp.status, resp.url);
+  }
+
+  if (resp.ok && resp.json && Array.isArray(resp.json.features) && resp.json.features.length) {
+    resp.json.features.forEach(f => {
       const coords = f.geometry && f.geometry.coordinates;
       if (!coords) return;
-      const lon = coords[0];
-      const lat = coords[1];
-
+      const lon = coords[0], lat = coords[1];
       if (lat < LAT_MIN || lat > LAT_MAX || lon < LON_MIN || lon > LON_MAX) return;
-
-      const name = (f.properties && (f.properties.name || f.properties.city || f.properties.state || f.properties.country)) || f.properties && f.properties.osm_value || f.properties && f.properties.display_name || "Ubicación";
-      const div = document.createElement("div");
+      const name = (f.properties && (f.properties.name || f.properties.city || f.properties.display_name)) || 'Ubicación';
+      const div = document.createElement('div');
       div.textContent = name;
       div.tabIndex = 0;
       div.onclick = () => {
@@ -157,52 +179,114 @@ async function autocomplete(text, container, input) {
         container.innerHTML = "";
         container.setAttribute('aria-hidden', 'true');
       };
-      div.onkeydown = (e) => { if (e.key === 'Enter') div.onclick(); };
+      div.onkeydown = e => { if (e.key === 'Enter') div.onclick(); };
       container.appendChild(div);
       container.setAttribute('aria-hidden', 'false');
     });
+    return;
+  }
+
+  console.warn('[autocomplete] Photon failed or empty:', resp.status, resp.text);
+
+  // Fallback to Nominatim
+  try {
+    const nomParams = new URLSearchParams({
+      format: 'geojson',
+      q: text,
+      limit: '5',
+      viewbox: `${LON_MIN},${LAT_MAX},${LON_MAX},${LAT_MIN}`,
+      bounded: '1',
+      'accept-language': 'es'
+    });
+    const nomUrl = 'https://nominatim.openstreetmap.org/search?' + nomParams.toString();
+    const rn = await fetchText(nomUrl);
+    console.log('[autocomplete] Nominatim ->', rn.status, nomUrl);
+    if (rn.ok && rn.json && Array.isArray(rn.json.features) && rn.json.features.length) {
+      rn.json.features.forEach(f => {
+        const coords = f.geometry && f.geometry.coordinates;
+        if (!coords) return;
+        const lon = coords[0], lat = coords[1];
+        const name = (f.properties && (f.properties.display_name || f.properties.name)) || 'Ubicación';
+        const div = document.createElement('div');
+        div.textContent = name;
+        div.tabIndex = 0;
+        div.onclick = () => {
+          input.value = name;
+          input.dataset.lat = String(lat);
+          input.dataset.lon = String(lon);
+          container.innerHTML = "";
+          container.setAttribute('aria-hidden', 'true');
+        };
+        div.onkeydown = e => { if (e.key === 'Enter') div.onclick(); };
+        container.appendChild(div);
+        container.setAttribute('aria-hidden', 'false');
+      });
+      return;
+    } else {
+      renderMessage('No hay resultados');
+      return;
+    }
   } catch (err) {
-    console.error(err);
-    const errDiv = document.createElement("div");
-    errDiv.textContent = "Error al buscar direcciones";
-    container.appendChild(errDiv);
+    console.error('[autocomplete] Nominatim error', err);
+    renderMessage('Error al buscar direcciones (ver consola)');
   }
 }
 
-const origenInput = document.getElementById("origen");
-const destinoInput = document.getElementById("destino");
-const sugOrigen = document.getElementById("sugOrigen");
-const sugDestino = document.getElementById("sugDestino");
-
-origenInput.addEventListener("input", debounce(() => autocomplete(origenInput.value, sugOrigen, origenInput), 300));
-destinoInput.addEventListener("input", debounce(() => autocomplete(destinoInput.value, sugDestino, destinoInput), 300));
-
-// ================= GEOCODIFICACIÓN AUTOMÁTICA =================
+// ================= GEOCODIFICACIÓN MANUAL (Photon -> try without bbox -> Nominatim) =================
 async function geocodeManual(text, input) {
-  const url =
-    "https://photon.komoot.io/api/?" +
-    "q=" + encodeURIComponent(text) +
-    "&limit=1" +
-    "&bbox=" + IBIZA_BBOX +
-    "&lang=es";
-  try {
-    const res = await fetch(url);
-    if (!res.ok) return false;
-    const data = await res.json();
-    if (!data.features || data.features.length === 0) return false;
+  if (!text || text.trim().length === 0) return false;
 
-    const lon = data.features[0].geometry.coordinates[0];
-    const lat = data.features[0].geometry.coordinates[1];
+  const fetchGeo = async (url) => {
+    const r = await fetchText(url);
+    if (r.ok && r.json && Array.isArray(r.json.features) && r.json.features.length) return r.json.features[0];
+    return null;
+  };
 
+  const photonBase = 'https://photon.komoot.io/api/';
+  const paramsWithBBox = new URLSearchParams({ q: text, limit: '1', lang: 'es', bbox: `${LON_MIN},${LAT_MIN},${LON_MAX},${LAT_MAX}` }).toString();
+  let feature = await fetchGeo(photonBase + '?' + paramsWithBBox);
+
+  if (!feature) {
+    // Try without bbox
+    const paramsNoBBox = new URLSearchParams({ q: text, limit: '1', lang: 'es' }).toString();
+    feature = await fetchGeo(photonBase + '?' + paramsNoBBox);
+  }
+
+  if (feature) {
+    const lon = feature.geometry.coordinates[0];
+    const lat = feature.geometry.coordinates[1];
     if (lat < LAT_MIN || lat > LAT_MAX || lon < LON_MIN || lon > LON_MAX) return false;
-
     input.dataset.lat = String(lat);
     input.dataset.lon = String(lon);
     return true;
-  } catch (err) {
-    console.error("geocodeManual:", err);
-    return false;
   }
+
+  // Fallback Nominatim
+  try {
+    const nomParams = new URLSearchParams({
+      format: 'geojson',
+      q: text,
+      limit: '1',
+      viewbox: `${LON_MIN},${LAT_MAX},${LON_MAX},${LAT_MIN}`,
+      bounded: '1',
+      'accept-language': 'es'
+    });
+    const nomUrl = 'https://nominatim.openstreetmap.org/search?' + nomParams.toString();
+    const rn = await fetchText(nomUrl);
+    console.log('[geocodeManual] Nominatim ->', rn.status, nomUrl);
+    if (rn.ok && rn.json && Array.isArray(rn.json.features) && rn.json.features.length) {
+      const lon = rn.json.features[0].geometry.coordinates[0];
+      const lat = rn.json.features[0].geometry.coordinates[1];
+      if (lat < LAT_MIN || lat > LAT_MAX || lon < LON_MIN || lon > LON_MAX) return false;
+      input.dataset.lat = String(lat);
+      input.dataset.lon = String(lon);
+      return true;
+    }
+  } catch (err) {
+    console.error('[geocodeManual] Nominatim error', err);
+  }
+
+  return false;
 }
 
 // ================= TARIFA AUTOMÁTICA =================
@@ -307,6 +391,14 @@ async function calcular() {
     btn.disabled = false;
   }
 }
+
+const origenInput = document.getElementById("origen");
+const destinoInput = document.getElementById("destino");
+const sugOrigen = document.getElementById("sugOrigen");
+const sugDestino = document.getElementById("sugDestino");
+
+origenInput.addEventListener("input", debounce(() => autocomplete(origenInput.value, sugOrigen, origenInput), 300));
+destinoInput.addEventListener("input", debounce(() => autocomplete(destinoInput.value, sugDestino, destinoInput), 300));
 
 document.getElementById("btnCalcular").addEventListener("click", calcular);
 </script>
