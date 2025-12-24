@@ -1,0 +1,316 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Calculadora Taxi Ibiza</title>
+
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+
+<style>
+body {
+  font-family: Arial, sans-serif;
+  max-width: 720px;
+  margin: auto;
+  padding: 10px;
+}
+h2 { text-align: center; }
+.input-row { margin-bottom: 8px; }
+input[type="text"], button, label {
+  width: 100%;
+  padding: 10px;
+  margin-top: 6px;
+  font-size: 16px;
+  box-sizing: border-box;
+}
+button {
+  background: #111;
+  color: #fff;
+  border: none;
+  cursor: pointer;
+}
+button[disabled] { opacity: 0.6; cursor: not-allowed; }
+#map { height: 320px; margin-top: 12px; }
+.suggestions {
+  border: 1px solid #ccc;
+  background: white;
+  position: relative;
+  z-index: 1000;
+}
+.suggestions div {
+  padding: 6px;
+  cursor: pointer;
+}
+.suggestions div:hover {
+  background: #eee;
+}
+.result {
+  background: #f2f2f2;
+  padding: 10px;
+  margin-top: 10px;
+}
+.notice {
+  font-size: 12px;
+  color: #555;
+  margin-top: 6px;
+}
+.small { font-size: 13px; color: #444; }
+</style>
+</head>
+<body>
+
+<h2>🚖 Calculadora Taxi Ibiza</h2>
+
+<div class="input-row">
+  <input id="origen" type="text" placeholder="Origen (Ibiza)" aria-label="Origen (Ibiza)">
+  <div id="sugOrigen" class="suggestions" aria-hidden="true"></div>
+</div>
+
+<div class="input-row">
+  <input id="destino" type="text" placeholder="Destino (Ibiza)" aria-label="Destino (Ibiza)">
+  <div id="sugDestino" class="suggestions" aria-hidden="true"></div>
+</div>
+
+<label class="small"><input type="checkbox" id="suplAeropuerto"> Suplemento Aeropuerto / Puerto (+2,00 €)</label>
+<label class="small"><input type="checkbox" id="suplApp"> Servicio por App / Teléfono (+1,45 €)</label>
+
+<button id="btnCalcular" type="button">Calcular precio</button>
+
+<div id="map" role="region" aria-label="Mapa de ruta"></div>
+
+<div id="resultado" class="result" aria-live="polite"></div>
+
+<div class="notice">
+Solo se permiten direcciones dentro de la isla de Ibiza.<br>
+Precio orientativo. El importe final será el marcado por el taxímetro.
+</div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+<script>
+// ================= CONFIGURACIÓN =================
+const IBIZA_BBOX = "1.10,38.85,1.60,39.15"; // minLon,minLat,maxLon,maxLat para Photon
+const LAT_MIN = 38.85, LAT_MAX = 39.15, LON_MIN = 1.10, LON_MAX = 1.60;
+
+const nfEuros = new Intl.NumberFormat('es-ES', { style: 'currency', currency: 'EUR' });
+
+// ================= MAPA =================
+const map = L.map('map').setView([38.9067, 1.4206], 11);
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+  maxZoom: 18,
+  attribution: '&copy; <a href="https://www.openstreetmap.org/">OpenStreetMap</a> contributors'
+}).addTo(map);
+let routeLayer = null;
+let markerOrigen = null;
+let markerDestino = null;
+
+// ================= UTIL: debounce =================
+function debounce(fn, wait) {
+  let t;
+  return (...args) => {
+    clearTimeout(t);
+    t = setTimeout(() => fn.apply(this, args), wait);
+  };
+}
+
+// ================= AUTOCOMPLETE =================
+async function autocomplete(text, container, input) {
+  container.innerHTML = "";
+  container.setAttribute('aria-hidden', 'true');
+  if (!text || text.length < 3) return;
+
+  const url =
+    "https://photon.komoot.io/api/?" +
+    "q=" + encodeURIComponent(text) +
+    "&limit=5" +
+    "&bbox=" + IBIZA_BBOX +
+    "&lang=es";
+
+  try {
+    const res = await fetch(url);
+    if (!res.ok) throw new Error("Error en geocodificador");
+    const data = await res.json();
+    if (!data.features || data.features.length === 0) {
+      const none = document.createElement("div");
+      none.textContent = "No hay resultados";
+      none.className = "small";
+      container.appendChild(none);
+      return;
+    }
+
+    data.features.forEach(f => {
+      const coords = f.geometry && f.geometry.coordinates;
+      if (!coords) return;
+      const lon = coords[0];
+      const lat = coords[1];
+
+      if (lat < LAT_MIN || lat > LAT_MAX || lon < LON_MIN || lon > LON_MAX) return;
+
+      const name = (f.properties && (f.properties.name || f.properties.city || f.properties.state || f.properties.country)) || f.properties && f.properties.osm_value || f.properties && f.properties.display_name || "Ubicación";
+      const div = document.createElement("div");
+      div.textContent = name;
+      div.tabIndex = 0;
+      div.onclick = () => {
+        input.value = name;
+        input.dataset.lat = String(lat);
+        input.dataset.lon = String(lon);
+        container.innerHTML = "";
+        container.setAttribute('aria-hidden', 'true');
+      };
+      div.onkeydown = (e) => { if (e.key === 'Enter') div.onclick(); };
+      container.appendChild(div);
+      container.setAttribute('aria-hidden', 'false');
+    });
+  } catch (err) {
+    console.error(err);
+    const errDiv = document.createElement("div");
+    errDiv.textContent = "Error al buscar direcciones";
+    container.appendChild(errDiv);
+  }
+}
+
+const origenInput = document.getElementById("origen");
+const destinoInput = document.getElementById("destino");
+const sugOrigen = document.getElementById("sugOrigen");
+const sugDestino = document.getElementById("sugDestino");
+
+origenInput.addEventListener("input", debounce(() => autocomplete(origenInput.value, sugOrigen, origenInput), 300));
+destinoInput.addEventListener("input", debounce(() => autocomplete(destinoInput.value, sugDestino, destinoInput), 300));
+
+// ================= GEOCODIFICACIÓN AUTOMÁTICA =================
+async function geocodeManual(text, input) {
+  const url =
+    "https://photon.komoot.io/api/?" +
+    "q=" + encodeURIComponent(text) +
+    "&limit=1" +
+    "&bbox=" + IBIZA_BBOX +
+    "&lang=es";
+  try {
+    const res = await fetch(url);
+    if (!res.ok) return false;
+    const data = await res.json();
+    if (!data.features || data.features.length === 0) return false;
+
+    const lon = data.features[0].geometry.coordinates[0];
+    const lat = data.features[0].geometry.coordinates[1];
+
+    if (lat < LAT_MIN || lat > LAT_MAX || lon < LON_MIN || lon > LON_MAX) return false;
+
+    input.dataset.lat = String(lat);
+    input.dataset.lon = String(lon);
+    return true;
+  } catch (err) {
+    console.error("geocodeManual:", err);
+    return false;
+  }
+}
+
+// ================= TARIFA AUTOMÁTICA =================
+function tarifaActual(now = new Date()) {
+  const h = now.getHours();
+  const d = now.getDay(); // 0 domingo
+
+  if (h >= 21 || h < 7) return 2;
+  if (d === 0) return 2;
+  if (d === 6 && h >= 15) return 2;
+
+  return 1;
+}
+
+// ================= CÁLCULO =================
+async function calcular() {
+  const btn = document.getElementById("btnCalcular");
+  const resultado = document.getElementById("resultado");
+  btn.disabled = true;
+  const origVal = origenInput.value.trim();
+  const destVal = destinoInput.value.trim();
+  resultado.textContent = "Calculando…";
+
+  // Geocode si falta
+  if (!origenInput.dataset.lat) {
+    const ok = await geocodeManual(origVal, origenInput);
+    if (!ok) {
+      alert("Origen no válido en Ibiza");
+      resultado.textContent = "";
+      btn.disabled = false;
+      return;
+    }
+  }
+  if (!destinoInput.dataset.lat) {
+    const ok = await geocodeManual(destVal, destinoInput);
+    if (!ok) {
+      alert("Destino no válido en Ibiza");
+      resultado.textContent = "";
+      btn.disabled = false;
+      return;
+    }
+  }
+
+  const lat1 = parseFloat(origenInput.dataset.lat);
+  const lon1 = parseFloat(origenInput.dataset.lon);
+  const lat2 = parseFloat(destinoInput.dataset.lat);
+  const lon2 = parseFloat(destinoInput.dataset.lon);
+
+  if (![lat1,lon1,lat2,lon2].every(Number.isFinite)) {
+    alert("Coordenadas no válidas");
+    resultado.textContent = "";
+    btn.disabled = false;
+    return;
+  }
+
+  // Mostrar marcadores de origen/destino
+  if (markerOrigen) map.removeLayer(markerOrigen);
+  markerOrigen = L.marker([lat1, lon1]).addTo(map).bindPopup("Origen").openPopup();
+  if (markerDestino) map.removeLayer(markerDestino);
+  markerDestino = L.marker([lat2, lon2]).addTo(map).bindPopup("Destino");
+
+  const url =
+    `https://router.project-osrm.org/route/v1/driving/${lon1},${lat1};${lon2},${lat2}?overview=full&geometries=geojson`;
+
+  try {
+    const res = await fetch(url);
+    if (!res.ok) throw new Error("Error en el servicio de rutas");
+    const data = await res.json();
+
+    if (!data.routes || data.routes.length === 0) {
+      throw new Error("No se encontró ruta");
+    }
+
+    const km = data.routes[0].distance / 1000;
+    const tarifa = tarifaActual();
+
+    let precioKm = tarifa === 1 ? 1.21 : 1.47;
+    let bajada = tarifa === 1 ? 4.00 : 0.00;
+    let total = bajada + km * precioKm;
+
+    if (document.getElementById("suplAeropuerto").checked) total += 2.00;
+    if (document.getElementById("suplApp").checked) total += 1.45;
+
+    resultado.innerHTML = `
+      <b>Tarifa aplicada:</b> ${tarifa === 1 ? "Tarifa 1 (Diurna)" : "Tarifa 2 (Nocturna/Festiva)"}<br>
+      <b>Distancia:</b> ${km.toFixed(2)} km<br>
+      <b>Precio estimado:</b> ${nfEuros.format(total)}
+    `;
+
+    // Dibujar ruta en el mapa
+    if (routeLayer) map.removeLayer(routeLayer);
+    routeLayer = L.geoJSON(data.routes[0].geometry, {
+      style: { color: '#0077cc', weight: 4 }
+    }).addTo(map);
+    map.fitBounds(routeLayer.getBounds(), { padding: [20,20] });
+
+  } catch (err) {
+    console.error(err);
+    resultado.textContent = "No se pudo calcular la ruta. Intenta más tarde.";
+    alert("Error al calcular la ruta: " + (err.message || err));
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+document.getElementById("btnCalcular").addEventListener("click", calcular);
+</script>
+
+</body>
+</html>
+</html>
