@@ -147,7 +147,8 @@ async function autocomplete(text, container, input) {
     const sp = new URLSearchParams();
     sp.set('q', text);
     sp.set('limit', '5');
-    sp.set('lang', 'es');
+    // Photon does not accept 'es' - use default
+    sp.set('lang', 'default');
     if (useBBox) sp.set('bbox', `${LON_MIN},${LAT_MIN},${LON_MAX},${LAT_MAX}`);
     return photonBase + '?' + sp.toString();
   };
@@ -243,12 +244,12 @@ async function geocodeManual(text, input) {
   };
 
   const photonBase = 'https://photon.komoot.io/api/';
-  const paramsWithBBox = new URLSearchParams({ q: text, limit: '1', lang: 'es', bbox: `${LON_MIN},${LAT_MIN},${LON_MAX},${LAT_MAX}` }).toString();
+  const paramsWithBBox = new URLSearchParams({ q: text, limit: '1', lang: 'default', bbox: `${LON_MIN},${LAT_MIN},${LON_MAX},${LAT_MAX}` }).toString();
   let feature = await fetchGeo(photonBase + '?' + paramsWithBBox);
 
   if (!feature) {
     // Try without bbox
-    const paramsNoBBox = new URLSearchParams({ q: text, limit: '1', lang: 'es' }).toString();
+    const paramsNoBBox = new URLSearchParams({ q: text, limit: '1', lang: 'default' }).toString();
     feature = await fetchGeo(photonBase + '?' + paramsNoBBox);
   }
 
