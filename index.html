@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1" />
 <title>Calculadora Taxi Ibiza</title>
 
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.css" />
 
 <style>
@@ -113,25 +114,40 @@ function debounce(fn, wait) {
   };
 }
 
-// ================= FETCH HELPER =================
-async function fetchText(url) {
+// ================= Abort controllers for inputs =================
+const controllers = { origen: null, destino: null };
+
+// ================= FETCH HELPER (accepts optional signal) =================
+async function fetchText(url, signal) {
   try {
-    const res = await fetch(url, { cache: 'no-store' });
+    const opts = { cache: 'no-store' };
+    if (signal) opts.signal = signal;
+    const res = await fetch(url, opts);
     const text = await res.text();
     let json = null;
     try { json = JSON.parse(text); } catch (e) { /* not JSON */ }
     return { ok: res.ok, status: res.status, text, json, url };
   } catch (err) {
+    if (err.name === 'AbortError') {
+      // caller should handle silent aborts
+      return { ok: false, status: 0, text: 'aborted', json: null, url };
+    }
     console.error('[fetchText] fetch error', err);
     return { ok: false, status: 0, text: String(err), json: null, url };
   }
 }
 
-// ================= AUTOCOMPLETE (Photon -> try without bbox -> Nominatim) =================
+// ================= AUTOCOMPLETE (Photon -> try without bbox -> Nominatim) with AbortController =================
 async function autocomplete(text, container, input) {
   container.innerHTML = "";
   container.setAttribute('aria-hidden', 'true');
   if (!text || text.length < 3) return;
+
+  const key = input.id; // 'origen' or 'destino'
+  // abort previous pending request for this input
+  if (controllers[key]) controllers[key].abort();
+  controllers[key] = new AbortController();
+  const signal = controllers[key].signal;
 
   const renderMessage = msg => {
     container.innerHTML = "";
@@ -147,50 +163,50 @@ async function autocomplete(text, container, input) {
     const sp = new URLSearchParams();
     sp.set('q', text);
     sp.set('limit', '5');
-    // Photon does not accept 'es' - use default
+    // Photon language: use default to avoid 400
     sp.set('lang', 'default');
     if (useBBox) sp.set('bbox', `${LON_MIN},${LAT_MIN},${LON_MAX},${LAT_MAX}`);
     return photonBase + '?' + sp.toString();
   };
 
-  // Try Photon with bbox
-  let resp = await fetchText(paramsBase(true));
-  console.log('[autocomplete] Photon (with bbox) ->', resp.status, resp.url);
-  // If 400, try without bbox
-  if (!resp.ok && resp.status === 400) {
-    console.warn('[autocomplete] Photon returned 400 with bbox, trying without bbox');
-    resp = await fetchText(paramsBase(false));
-    console.log('[autocomplete] Photon (no bbox) ->', resp.status, resp.url);
-  }
-
-  if (resp.ok && resp.json && Array.isArray(resp.json.features) && resp.json.features.length) {
-    resp.json.features.forEach(f => {
-      const coords = f.geometry && f.geometry.coordinates;
-      if (!coords) return;
-      const lon = coords[0], lat = coords[1];
-      if (lat < LAT_MIN || lat > LAT_MAX || lon < LON_MIN || lon > LON_MAX) return;
-      const name = (f.properties && (f.properties.name || f.properties.city || f.properties.display_name)) || 'Ubicación';
-      const div = document.createElement('div');
-      div.textContent = name;
-      div.tabIndex = 0;
-      div.onclick = () => {
-        input.value = name;
-        input.dataset.lat = String(lat);
-        input.dataset.lon = String(lon);
-        container.innerHTML = "";
-        container.setAttribute('aria-hidden', 'true');
-      };
-      div.onkeydown = e => { if (e.key === 'Enter') div.onclick(); };
-      container.appendChild(div);
-      container.setAttribute('aria-hidden', 'false');
-    });
-    return;
-  }
-
-  console.warn('[autocomplete] Photon failed or empty:', resp.status, resp.text);
-
-  // Fallback to Nominatim
   try {
+    // Try Photon with bbox
+    let resp = await fetchText(paramsBase(true), signal);
+    console.log('[autocomplete] Photon (with bbox) ->', resp.status, resp.url);
+    // If 400, try without bbox
+    if (!resp.ok && resp.status === 400) {
+      console.warn('[autocomplete] Photon returned 400 with bbox, trying without bbox');
+      resp = await fetchText(paramsBase(false), signal);
+      console.log('[autocomplete] Photon (no bbox) ->', resp.status, resp.url);
+    }
+
+    if (resp.ok && resp.json && Array.isArray(resp.json.features) && resp.json.features.length) {
+      resp.json.features.forEach(f => {
+        const coords = f.geometry && f.geometry.coordinates;
+        if (!coords) return;
+        const lon = coords[0], lat = coords[1];
+        if (lat < LAT_MIN || lat > LAT_MAX || lon < LON_MIN || lon > LON_MAX) return;
+        const name = (f.properties && (f.properties.name || f.properties.city || f.properties.display_name)) || 'Ubicación';
+        const div = document.createElement('div');
+        div.textContent = name;
+        div.tabIndex = 0;
+        div.onclick = () => {
+          input.value = name;
+          input.dataset.lat = String(lat);
+          input.dataset.lon = String(lon);
+          container.innerHTML = "";
+          container.setAttribute('aria-hidden', 'true');
+        };
+        div.onkeydown = e => { if (e.key === 'Enter') div.onclick(); };
+        container.appendChild(div);
+        container.setAttribute('aria-hidden', 'false');
+      });
+      return;
+    }
+
+    console.warn('[autocomplete] Photon failed or empty:', resp.status, resp.text);
+
+    // Fallback to Nominatim
     const nomParams = new URLSearchParams({
       format: 'geojson',
       q: text,
@@ -200,7 +216,7 @@ async function autocomplete(text, container, input) {
       'accept-language': 'es'
     });
     const nomUrl = 'https://nominatim.openstreetmap.org/search?' + nomParams.toString();
-    const rn = await fetchText(nomUrl);
+    const rn = await fetchText(nomUrl, signal);
     console.log('[autocomplete] Nominatim ->', rn.status, nomUrl);
     if (rn.ok && rn.json && Array.isArray(rn.json.features) && rn.json.features.length) {
       rn.json.features.forEach(f => {
@@ -228,42 +244,51 @@ async function autocomplete(text, container, input) {
       return;
     }
   } catch (err) {
-    console.error('[autocomplete] Nominatim error', err);
+    if (err && err.name === 'AbortError') {
+      // Request aborted, do nothing silently
+      return;
+    }
+    console.error('[autocomplete] error', err);
     renderMessage('Error al buscar direcciones (ver consola)');
   }
 }
 
-// ================= GEOCODIFICACIÓN MANUAL (Photon -> try without bbox -> Nominatim) =================
+// ================= GEOCODIFICACIÓN MANUAL (Photon -> try without bbox -> Nominatim) with AbortController =================
 async function geocodeManual(text, input) {
   if (!text || text.trim().length === 0) return false;
 
+  const key = input.id;
+  if (controllers[key]) controllers[key].abort();
+  controllers[key] = new AbortController();
+  const signal = controllers[key].signal;
+
   const fetchGeo = async (url) => {
-    const r = await fetchText(url);
+    const r = await fetchText(url, signal);
     if (r.ok && r.json && Array.isArray(r.json.features) && r.json.features.length) return r.json.features[0];
     return null;
   };
 
-  const photonBase = 'https://photon.komoot.io/api/';
-  const paramsWithBBox = new URLSearchParams({ q: text, limit: '1', lang: 'default', bbox: `${LON_MIN},${LAT_MIN},${LON_MAX},${LAT_MAX}` }).toString();
-  let feature = await fetchGeo(photonBase + '?' + paramsWithBBox);
-
-  if (!feature) {
-    // Try without bbox
-    const paramsNoBBox = new URLSearchParams({ q: text, limit: '1', lang: 'default' }).toString();
-    feature = await fetchGeo(photonBase + '?' + paramsNoBBox);
-  }
-
-  if (feature) {
-    const lon = feature.geometry.coordinates[0];
-    const lat = feature.geometry.coordinates[1];
-    if (lat < LAT_MIN || lat > LAT_MAX || lon < LON_MIN || lon > LON_MAX) return false;
-    input.dataset.lat = String(lat);
-    input.dataset.lon = String(lon);
-    return true;
-  }
-
-  // Fallback Nominatim
   try {
+    const photonBase = 'https://photon.komoot.io/api/';
+    const paramsWithBBox = new URLSearchParams({ q: text, limit: '1', lang: 'default', bbox: `${LON_MIN},${LAT_MIN},${LON_MAX},${LAT_MAX}` }).toString();
+    let feature = await fetchGeo(photonBase + '?' + paramsWithBBox);
+
+    if (!feature) {
+      // Try without bbox
+      const paramsNoBBox = new URLSearchParams({ q: text, limit: '1', lang: 'default' }).toString();
+      feature = await fetchGeo(photonBase + '?' + paramsNoBBox);
+    }
+
+    if (feature) {
+      const lon = feature.geometry.coordinates[0];
+      const lat = feature.geometry.coordinates[1];
+      if (lat < LAT_MIN || lat > LAT_MAX || lon < LON_MIN || lon > LON_MAX) return false;
+      input.dataset.lat = String(lat);
+      input.dataset.lon = String(lon);
+      return true;
+    }
+
+    // Fallback Nominatim
     const nomParams = new URLSearchParams({
       format: 'geojson',
       q: text,
@@ -273,7 +298,7 @@ async function geocodeManual(text, input) {
       'accept-language': 'es'
     });
     const nomUrl = 'https://nominatim.openstreetmap.org/search?' + nomParams.toString();
-    const rn = await fetchText(nomUrl);
+    const rn = await fetchText(nomUrl, signal);
     console.log('[geocodeManual] Nominatim ->', rn.status, nomUrl);
     if (rn.ok && rn.json && Array.isArray(rn.json.features) && rn.json.features.length) {
       const lon = rn.json.features[0].geometry.coordinates[0];
@@ -284,7 +309,8 @@ async function geocodeManual(text, input) {
       return true;
     }
   } catch (err) {
-    console.error('[geocodeManual] Nominatim error', err);
+    if (err && err.name === 'AbortError') return false;
+    console.error('[geocodeManual] error', err);
   }
 
   return false;
