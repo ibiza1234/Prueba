@@ -1,0 +1,16 @@
+# en la raíz del repo local
+cat > favicon.svg <<'SVG'
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <rect width="64" height="64" rx="8" ry="8" fill="#ffd700"/>
+  <g fill="#000000">
+    <rect x="10" y="26" width="44" height="14" rx="2" />
+    <circle cx="20" cy="46" r="4" />
+    <circle cx="44" cy="46" r="4" />
+  </g>
+</svg>
+SVG
+
+git add favicon.svg index.html
+git commit -m "Add favicon and AbortController for autocomplete (cancel previous requests)"
+git push origin main
