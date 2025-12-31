@@ -8,45 +8,354 @@
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.css" />
 
 <style>
-body { font-family: Arial, sans-serif; max-width: 720px; margin: auto; padding: 10px; }
-h2 { text-align: center; }
-.input-row { margin-bottom: 8px; }
-input[type="text"], button, label { width: 100%; padding: 10px; margin-top: 6px; font-size: 16px; box-sizing: border-box; }
-button { background: #111; color: #fff; border: none; cursor: pointer; }
-button[disabled] { opacity: 0.6; cursor: not-allowed; }
-#map { height: 320px; margin-top: 12px; }
-.suggestions { border: 1px solid #ccc; background: white; position: relative; z-index: 1000; }
-.suggestions div { padding: 6px; cursor: pointer; display:flex; justify-content:space-between; }
-.suggestions div:hover { background: #eee; }
-.result { background: #f2f2f2; padding: 10px; margin-top: 10px; }
-.notice { font-size: 12px; color: #555; margin-top: 6px; }
-.poi-badge { font-size: 11px; color:#666; margin-left:8px; }
+* {
+  box-sizing: border-box;
+}
+
+body { 
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  margin: 0;
+  padding: 0;
+  background: linear-gradient(135deg, #fbbf24 0%, #fcd34d 50%, #fde68a 100%);
+  min-height: 100vh;
+}
+
+.container {
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 20px;
+}
+
+.header {
+  text-align: center;
+  margin-bottom: 30px;
+}
+
+.header-icon {
+  background: #fbbf24;
+  width: 60px;
+  height: 60px;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 32px;
+  margin-bottom: 10px;
+  box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+}
+
+h2 { 
+  color: #1f2937;
+  font-size: 32px;
+  font-weight: bold;
+  margin: 10px 0;
+}
+
+.card {
+  background: white;
+  border-radius: 16px;
+  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+  padding: 32px;
+  margin-bottom: 24px;
+}
+
+.input-row { 
+  margin-bottom: 20px;
+  position: relative;
+}
+
+.input-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  font-weight: 600;
+  color: #374151;
+  margin-bottom: 8px;
+}
+
+.input-icon {
+  width: 16px;
+  height: 16px;
+}
+
+input[type="text"] { 
+  width: 100%;
+  padding: 12px 16px;
+  font-size: 16px;
+  border: 2px solid #e5e7eb;
+  border-radius: 8px;
+  transition: all 0.3s;
+  outline: none;
+}
+
+input[type="text"]:focus {
+  border-color: #fbbf24;
+  box-shadow: 0 0 0 3px rgba(251, 191, 36, 0.1);
+}
+
+.suggestions { 
+  border: 1px solid #e5e7eb;
+  background: white;
+  position: absolute;
+  z-index: 1000;
+  width: 100%;
+  border-radius: 8px;
+  margin-top: 4px;
+  box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+.suggestions div { 
+  padding: 12px 16px;
+  cursor: pointer;
+  display: flex;
+  justify-content: space-between;
+  border-bottom: 1px solid #f3f4f6;
+  transition: background 0.2s;
+}
+
+.suggestions div:last-child {
+  border-bottom: none;
+}
+
+.suggestions div:hover { 
+  background: #f9fafb;
+}
+
+.poi-badge { 
+  font-size: 11px;
+  color: #6b7280;
+  background: #f3f4f6;
+  padding: 2px 8px;
+  border-radius: 4px;
+  margin-left: 8px;
+}
+
+.checkbox-group {
+  margin-bottom: 24px;
+}
+
+.checkbox-label {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 16px;
+  background: #f9fafb;
+  border-radius: 8px;
+  cursor: pointer;
+  margin-bottom: 12px;
+  transition: all 0.3s;
+  border: 2px solid transparent;
+}
+
+.checkbox-label:hover {
+  background: #f3f4f6;
+  border-color: #fde68a;
+}
+
+input[type="checkbox"] {
+  width: 20px;
+  height: 20px;
+  cursor: pointer;
+  accent-color: #fbbf24;
+}
+
+.checkbox-text {
+  flex: 1;
+  font-weight: 500;
+  color: #374151;
+  font-size: 14px;
+}
+
+button { 
+  width: 100%;
+  padding: 16px;
+  font-size: 16px;
+  font-weight: bold;
+  background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+  color: white;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.3s;
+  box-shadow: 0 4px 6px rgba(59, 130, 246, 0.3);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
+button:hover {
+  background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%);
+  transform: scale(1.02);
+}
+
+button[disabled] { 
+  opacity: 0.6;
+  cursor: not-allowed;
+  transform: scale(1);
+}
+
+#map { 
+  height: 350px;
+  margin: 24px 0;
+  border-radius: 12px;
+  box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+}
+
+.result { 
+  background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+  color: white;
+  padding: 24px;
+  margin-top: 24px;
+  border-radius: 12px;
+  box-shadow: 0 10px 15px -3px rgba(16, 185, 129, 0.3);
+  font-size: 15px;
+  line-height: 1.8;
+}
+
+.result b {
+  display: block;
+  margin-top: 8px;
+  font-size: 16px;
+}
+
+.result b:first-child {
+  margin-top: 0;
+}
+
+.info-card {
+  background: white;
+  border-radius: 16px;
+  box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
+  padding: 24px;
+}
+
+.info-title {
+  font-size: 20px;
+  font-weight: bold;
+  color: #1f2937;
+  margin-bottom: 16px;
+}
+
+.info-row {
+  display: flex;
+  justify-content: space-between;
+  padding: 12px;
+  border-radius: 8px;
+  margin-bottom: 8px;
+  font-size: 14px;
+}
+
+.info-row:nth-child(odd) {
+  background: #fef3c7;
+}
+
+.info-row:nth-child(even) {
+  background: #f9fafb;
+}
+
+.info-row span:first-child {
+  font-weight: 600;
+  color: #374151;
+}
+
+.info-row span:last-child {
+  font-weight: bold;
+  color: #1f2937;
+}
+
+.notice { 
+  font-size: 12px;
+  color: #6b7280;
+  background: #dbeafe;
+  padding: 12px 16px;
+  border-radius: 8px;
+  border-left: 4px solid #3b82f6;
+  line-height: 1.6;
+}
 </style>
 </head>
 <body>
 
-<h2>🚖 Calculadora Taxi Ibiza</h2>
+<div class="container">
+  <div class="header">
+    <div class="header-icon">🚖</div>
+    <h2>Calculadora Taxi Ibiza</h2>
+  </div>
 
-<div class="input-row">
-  <input id="origen" type="text" placeholder="Origen (Ibiza)" aria-label="Origen (Ibiza)">
-  <div id="sugOrigen" class="suggestions" aria-hidden="true"></div>
+  <div class="card">
+    <div class="input-row">
+      <label class="input-label">
+        <span style="color: #10b981;">📍</span>
+        Origen
+      </label>
+      <input id="origen" type="text" placeholder="Ej: Sant Antoni" aria-label="Origen (Ibiza)">
+      <div id="sugOrigen" class="suggestions" aria-hidden="true"></div>
+    </div>
+
+    <div class="input-row">
+      <label class="input-label">
+        <span style="color: #ef4444;">📍</span>
+        Destino
+      </label>
+      <input id="destino" type="text" placeholder="Ej: Aeropuerto de Ibiza" aria-label="Destino (Ibiza)">
+      <div id="sugDestino" class="suggestions" aria-hidden="true"></div>
+    </div>
+
+    <div class="checkbox-group">
+      <label class="checkbox-label">
+        <input type="checkbox" id="suplAeropuerto">
+        <span class="checkbox-text">✈️ Suplemento Aeropuerto / Puerto (+2,00 €)</span>
+      </label>
+
+      <label class="checkbox-label">
+        <input type="checkbox" id="suplApp">
+        <span class="checkbox-text">📱 Servicio por App / Teléfono (+1,45 €)</span>
+      </label>
+    </div>
+
+    <button id="btnCalcular" type="button">
+      <span>🧮</span>
+      Calcular precio
+    </button>
+
+    <div id="map" role="region" aria-label="Mapa de ruta"></div>
+
+    <div id="resultado" class="result" style="display: none;" aria-live="polite"></div>
+  </div>
+
+  <div class="info-card">
+    <div class="info-title">📋 Información de Tarifas</div>
+    <div class="info-row">
+      <span>Bajada de bandera (Tarifa 1):</span>
+      <span>4,00 €</span>
+    </div>
+    <div class="info-row">
+      <span>Precio por km (Tarifa 1 - Diurna):</span>
+      <span>1,21 €/km</span>
+    </div>
+    <div class="info-row">
+      <span>Precio por km (Tarifa 2 - Nocturna):</span>
+      <span>1,47 €/km</span>
+    </div>
+    <div class="info-row">
+      <span>Suplemento Aeropuerto/Puerto:</span>
+      <span>+2,00 €</span>
+    </div>
+    <div class="info-row">
+      <span>Suplemento App/Teléfono:</span>
+      <span>+1,45 €</span>
+    </div>
+  </div>
+
+  <div class="notice" style="margin-top: 16px;">
+    ℹ️ Solo se permiten direcciones dentro de la isla de Ibiza.<br>
+    Precio orientativo. El importe final será el marcado por el taxímetro.
+  </div>
 </div>
-
-<div class="input-row">
-  <input id="destino" type="text" placeholder="Destino (Ibiza)" aria-label="Destino (Ibiza)">
-  <div id="sugDestino" class="suggestions" aria-hidden="true"></div>
-</div>
-
-<label class="small"><input type="checkbox" id="suplAeropuerto"> Suplemento Aeropuerto / Puerto (+2,00 €)</label>
-<label class="small"><input type="checkbox" id="suplApp"> Servicio por App / Teléfono (+1,45 €)</label>
-
-<button id="btnCalcular" type="button">Calcular precio</button>
-
-<div id="map" role="region" aria-label="Mapa de ruta"></div>
-
-<div id="resultado" class="result" aria-live="polite"></div>
-
-<div class="notice">Solo se permiten direcciones dentro de la isla de Ibiza.<br>Precio orientativo. El importe final será el marcado por el taxímetro.</div>
 
 <script src="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
@@ -55,12 +364,6 @@ const IBIZA_BBOX = "1.10,38.85,1.60,39.15";
 const LAT_MIN = 38.85, LAT_MAX = 39.15, LON_MIN = 1.10, LON_MAX = 1.60;
 const nfEuros = new Intl.NumberFormat('es-ES', { style: 'currency', currency: 'EUR' });
 
-// ================= FUNCIÓN DE REDONDEO =================
-function redondearTaximetro(precio) {
-  // Redondea al múltiplo de 0.50 más cercano
-  return Math.round(precio * 2) / 2;
-}
-
 // ================= MAPA =================
 const map = L.map('map').setView([38.9067, 1.4206], 11);
 L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 18, attribution: '&copy; <a href="https://www.openstreetmap.org/">OpenStreetMap</a> contributors' }).addTo(map);
@@ -68,13 +371,7 @@ let routeLayer = null; let markerOrigen = null; let markerDestino = null;
 
 // ================= POIS CARGA =================
 let POIS = [];
-(async function loadPOIs(){
-  try {
-    const r = await fetch('assets/pois/ibiza_pois.json');
-    POIS = await r.json();
-    console.log('[POIS] loaded', POIS.length);
-  } catch (e) { console.warn('Could not load POIs', e); POIS = []; }
-})();
+// POIs feature disabled - file not available
 
 function searchLocalPOIs(q, limit = 5) {
   if (!q || q.trim().length < 2) return [];
@@ -211,12 +508,15 @@ async function geocodeManual(text, input) {
 function tarifaActual(now = new Date()) { const h = now.getHours(); const d = now.getDay(); if (h >= 21 || h < 7) return 2; if (d === 0) return 2; if (d === 6 && h >= 15) return 2; return 1; }
 
 async function calcular() {
-  const btn = document.getElementById('btnCalcular'); const resultado = document.getElementById('resultado'); btn.disabled = true; const origVal = origenInput.value.trim(); const destVal = destinoInput.value.trim(); resultado.textContent = 'Calculando…';
-  if (!origenInput.dataset.lat) { const ok = await geocodeManual(origVal, origenInput); if (!ok) { alert('Origen no válido en Ibiza'); resultado.textContent = ''; btn.disabled = false; return; } }
-  if (!destinoInput.dataset.lat) { const ok = await geocodeManual(destVal, destinoInput); if (!ok) { alert('Destino no válido en Ibiza'); resultado.textContent = ''; btn.disabled = false; return; } }
+  const btn = document.getElementById('btnCalcular'); const resultado = document.getElementById('resultado'); btn.disabled = true; const origVal = origenInput.value.trim(); const destVal = destinoInput.value.trim(); 
+  resultado.style.display = 'block';
+  resultado.textContent = 'Calculando…';
+  
+  if (!origenInput.dataset.lat) { const ok = await geocodeManual(origVal, origenInput); if (!ok) { alert('Origen no válido en Ibiza'); resultado.style.display = 'none'; btn.disabled = false; return; } }
+  if (!destinoInput.dataset.lat) { const ok = await geocodeManual(destVal, destinoInput); if (!ok) { alert('Destino no válido en Ibiza'); resultado.style.display = 'none'; btn.disabled = false; return; } }
 
   const lat1 = parseFloat(origenInput.dataset.lat); const lon1 = parseFloat(origenInput.dataset.lon); const lat2 = parseFloat(destinoInput.dataset.lat); const lon2 = parseFloat(destinoInput.dataset.lon);
-  if (![lat1,lon1,lat2,lon2].every(Number.isFinite)) { alert('Coordenadas no válidas'); resultado.textContent = ''; btn.disabled = false; return; }
+  if (![lat1,lon1,lat2,lon2].every(Number.isFinite)) { alert('Coordenadas no válidas'); resultado.style.display = 'none'; btn.disabled = false; return; }
 
   if (markerOrigen) map.removeLayer(markerOrigen); markerOrigen = L.marker([lat1, lon1]).addTo(map).bindPopup('Origen').openPopup(); if (markerDestino) map.removeLayer(markerDestino); markerDestino = L.marker([lat2, lon2]).addTo(map).bindPopup('Destino');
 
@@ -233,10 +533,6 @@ async function calcular() {
     let total = bajada + km * precioKm; 
     if (document.getElementById('suplAeropuerto').checked) total += 2.00; 
     if (document.getElementById('suplApp').checked) total += 1.45; 
-    
-    // Redondear al múltiplo de 0.50 más cercano
-    total = redondearTaximetro(total);
-    
     resultado.innerHTML = `<b>Tarifa aplicada:</b> ${tarifa === 1 ? 'Tarifa 1 (Diurna)' : 'Tarifa 2 (Nocturna/Festiva)'}<br><b>Distancia:</b> ${km.toFixed(2)} km<br><b>Precio estimado:</b> ${nfEuros.format(total)}`; 
     if (routeLayer) map.removeLayer(routeLayer); 
     routeLayer = L.geoJSON(data.routes[0].geometry, { style: { color: '#0077cc', weight: 4 } }).addTo(map); 
