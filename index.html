@@ -51,9 +51,15 @@ button[disabled] { opacity: 0.6; cursor: not-allowed; }
 <script src="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
 // ================= CONFIGURACIÓN =================
-const IBIZA_BBOX = "1.10,38.85,1.60,39.15"; // minLon,minLat,maxLon,maxLat para referencia
+const IBIZA_BBOX = "1.10,38.85,1.60,39.15";
 const LAT_MIN = 38.85, LAT_MAX = 39.15, LON_MIN = 1.10, LON_MAX = 1.60;
 const nfEuros = new Intl.NumberFormat('es-ES', { style: 'currency', currency: 'EUR' });
+
+// ================= FUNCIÓN DE REDONDEO =================
+function redondearTaximetro(precio) {
+  // Redondea al múltiplo de 0.50 más cercano
+  return Math.round(precio * 2) / 2;
+}
 
 // ================= MAPA =================
 const map = L.map('map').setView([38.9067, 1.4206], 11);
@@ -105,10 +111,8 @@ async function autocomplete(text, container, input) {
   container.innerHTML = ""; container.setAttribute('aria-hidden', 'true');
   if (!text || text.length < 2) return;
 
-  // Cancel previous pending request for this input
   const key = input.id; if (controllers[key]) controllers[key].abort(); controllers[key] = new AbortController(); const signal = controllers[key].signal;
 
-  // 1) Local POIs first
   const local = searchLocalPOIs(text, 5);
   const addedNames = new Set();
   if (local.length) {
@@ -123,12 +127,9 @@ async function autocomplete(text, container, input) {
     container.setAttribute('aria-hidden','false');
   }
 
-  // 2) Remote Photon/Nominatim fallback (only if not enough local matches)
-  // We'll still query remote but will avoid duplicates
   const photonBase = 'https://photon.komoot.io/api/';
   const paramsBase = (useBBox) => { const sp = new URLSearchParams(); sp.set('q', text); sp.set('limit', '5'); sp.set('lang', 'default'); if (useBBox) sp.set('bbox', `${LON_MIN},${LAT_MIN},${LON_MAX},${LAT_MAX}`); return photonBase + '?' + sp.toString(); };
 
-  // Try Photon with bbox
   let resp = await fetchText(paramsBase(true), signal);
   console.log('[autocomplete] Photon (with bbox) ->', resp.status, resp.url);
   if (!resp.ok && resp.status === 400) { resp = await fetchText(paramsBase(false), signal); console.log('[autocomplete] Photon (no bbox) ->', resp.status, resp.url); }
@@ -136,7 +137,7 @@ async function autocomplete(text, container, input) {
   if (resp.ok && resp.json && Array.isArray(resp.json.features) && resp.json.features.length) {
     resp.json.features.forEach(f => {
       const coords = f.geometry && f.geometry.coordinates; if (!coords) return; const lon = coords[0], lat = coords[1];
-      if (lat < LAT_MIN || lat > LAT_MAX || lon < LON_MIN || lon > LON_MAX) return; // enforce Ibiza restriction
+      if (lat < LAT_MIN || lat > LAT_MAX || lon < LON_MIN || lon > LON_MAX) return;
       const name = (f.properties && (f.properties.name || f.properties.city || f.properties.display_name)) || 'Ubicación';
       if (addedNames.has(name)) return;
       const div = document.createElement('div'); div.textContent = name; div.onclick = () => { input.value = name; input.dataset.lat = String(lat); input.dataset.lon = String(lon); container.innerHTML = ''; container.setAttribute('aria-hidden','true'); };
@@ -149,7 +150,6 @@ async function autocomplete(text, container, input) {
 
   console.warn('[autocomplete] Photon failed or empty:', resp.status, resp.text);
 
-  // Fallback to Nominatim
   try {
     const nomParams = new URLSearchParams({ format: 'geojson', q: text, limit: '5', viewbox: `${LON_MIN},${LAT_MAX},${LON_MAX},${LAT_MIN}`, bounded: '1', 'accept-language': 'es' });
     const nomUrl = 'https://nominatim.openstreetmap.org/search?' + nomParams.toString();
@@ -158,7 +158,7 @@ async function autocomplete(text, container, input) {
     if (rn.ok && rn.json && Array.isArray(rn.json.features) && rn.json.features.length) {
       rn.json.features.forEach(f => {
         const coords = f.geometry && f.geometry.coordinates; if (!coords) return; const lon = coords[0], lat = coords[1];
-        if (lat < LAT_MIN || lat > LAT_MAX || lon < LON_MIN || lon > LON_MAX) return; // enforce Ibiza restriction
+        if (lat < LAT_MIN || lat > LAT_MAX || lon < LON_MIN || lon > LON_MAX) return;
         const name = (f.properties && (f.properties.display_name || f.properties.name)) || 'Ubicación';
         if (addedNames.has(name)) return;
         const div = document.createElement('div'); div.textContent = name; div.onclick = () => { input.value = name; input.dataset.lat = String(lat); input.dataset.lon = String(lon); container.innerHTML = ''; container.setAttribute('aria-hidden','true'); };
@@ -176,16 +176,14 @@ async function autocomplete(text, container, input) {
 
 function renderMessage(container, msg) { container.innerHTML = ''; const d = document.createElement('div'); d.className = 'small'; d.textContent = msg; container.appendChild(d); container.setAttribute('aria-hidden','false'); }
 
-// ================= GEOCODIFICACIÓN MANUAL (similar logic) =================
+// ================= GEOCODIFICACIÓN MANUAL =================
 async function geocodeManual(text, input) {
   if (!text || text.trim().length === 0) return false;
   const key = input.id; if (controllers[key]) controllers[key].abort(); controllers[key] = new AbortController(); const signal = controllers[key].signal;
 
-  // 1) Check local POIs exact/partial match
   const local = searchLocalPOIs(text, 1);
   if (local && local.length) { input.dataset.lat = String(local[0].lat); input.dataset.lon = String(local[0].lon); return true; }
 
-  // 2) Photon with bbox then without
   const photonBase = 'https://photon.komoot.io/api/';
   const paramsWithBBox = new URLSearchParams({ q: text, limit: '1', lang: 'default', bbox: `${LON_MIN},${LAT_MIN},${LON_MAX},${LAT_MAX}` }).toString();
   let feature = null;
@@ -197,7 +195,6 @@ async function geocodeManual(text, input) {
 
   if (feature) { const lon = feature.geometry.coordinates[0]; const lat = feature.geometry.coordinates[1]; if (lat < LAT_MIN || lat > LAT_MAX || lon < LON_MIN || lon > LON_MAX) return false; input.dataset.lat = String(lat); input.dataset.lon = String(lon); return true; }
 
-  // Fallback Nominatim
   try {
     const nomParams = new URLSearchParams({ format: 'geojson', q: text, limit: '1', viewbox: `${LON_MIN},${LAT_MAX},${LON_MAX},${LAT_MIN}`, bounded: '1', 'accept-language': 'es' });
     const nomUrl = 'https://nominatim.openstreetmap.org/search?' + nomParams.toString();
@@ -210,7 +207,7 @@ async function geocodeManual(text, input) {
   return false;
 }
 
-// ================= TARIFA Y CÁLCULO (sin cambios significativos) =================
+// ================= TARIFA Y CÁLCULO =================
 function tarifaActual(now = new Date()) { const h = now.getHours(); const d = now.getDay(); if (h >= 21 || h < 7) return 2; if (d === 0) return 2; if (d === 6 && h >= 15) return 2; return 1; }
 
 async function calcular() {
@@ -224,7 +221,33 @@ async function calcular() {
   if (markerOrigen) map.removeLayer(markerOrigen); markerOrigen = L.marker([lat1, lon1]).addTo(map).bindPopup('Origen').openPopup(); if (markerDestino) map.removeLayer(markerDestino); markerDestino = L.marker([lat2, lon2]).addTo(map).bindPopup('Destino');
 
   const url = `https://router.project-osrm.org/route/v1/driving/${lon1},${lat1};${lon2},${lat2}?overview=full&geometries=geojson`;
-  try { const res = await fetch(url); if (!res.ok) throw new Error('Error en el servicio de rutas'); const data = await res.json(); if (!data.routes || data.routes.length === 0) throw new Error('No se encontró ruta'); const km = data.routes[0].distance / 1000; const tarifa = tarifaActual(); let precioKm = tarifa === 1 ? 1.21 : 1.47; let bajada = tarifa === 1 ? 4.00 : 0.00; let total = bajada + km * precioKm; if (document.getElementById('suplAeropuerto').checked) total += 2.00; if (document.getElementById('suplApp').checked) total += 1.45; resultado.innerHTML = `<b>Tarifa aplicada:</b> ${tarifa === 1 ? 'Tarifa 1 (Diurna)' : 'Tarifa 2 (Nocturna/Festiva)'}<br><b>Distancia:</b> ${km.toFixed(2)} km<br><b>Precio estimado:</b> ${nfEuros.format(total)}`; if (routeLayer) map.removeLayer(routeLayer); routeLayer = L.geoJSON(data.routes[0].geometry, { style: { color: '#0077cc', weight: 4 } }).addTo(map); map.fitBounds(routeLayer.getBounds(), { padding: [20,20] }); } catch (err) { console.error(err); resultado.textContent = 'No se pudo calcular la ruta. Intenta más tarde.'; alert('Error al calcular la ruta: ' + (err.message || err)); } finally { btn.disabled = false; }
+  try { 
+    const res = await fetch(url); 
+    if (!res.ok) throw new Error('Error en el servicio de rutas'); 
+    const data = await res.json(); 
+    if (!data.routes || data.routes.length === 0) throw new Error('No se encontró ruta'); 
+    const km = data.routes[0].distance / 1000; 
+    const tarifa = tarifaActual(); 
+    let precioKm = tarifa === 1 ? 1.21 : 1.47; 
+    let bajada = tarifa === 1 ? 4.00 : 0.00; 
+    let total = bajada + km * precioKm; 
+    if (document.getElementById('suplAeropuerto').checked) total += 2.00; 
+    if (document.getElementById('suplApp').checked) total += 1.45; 
+    
+    // Redondear al múltiplo de 0.50 más cercano
+    total = redondearTaximetro(total);
+    
+    resultado.innerHTML = `<b>Tarifa aplicada:</b> ${tarifa === 1 ? 'Tarifa 1 (Diurna)' : 'Tarifa 2 (Nocturna/Festiva)'}<br><b>Distancia:</b> ${km.toFixed(2)} km<br><b>Precio estimado:</b> ${nfEuros.format(total)}`; 
+    if (routeLayer) map.removeLayer(routeLayer); 
+    routeLayer = L.geoJSON(data.routes[0].geometry, { style: { color: '#0077cc', weight: 4 } }).addTo(map); 
+    map.fitBounds(routeLayer.getBounds(), { padding: [20,20] }); 
+  } catch (err) { 
+    console.error(err); 
+    resultado.textContent = 'No se pudo calcular la ruta. Intenta más tarde.'; 
+    alert('Error al calcular la ruta: ' + (err.message || err)); 
+  } finally { 
+    btn.disabled = false; 
+  }
 }
 
 const origenInput = document.getElementById('origen'); const destinoInput = document.getElementById('destino'); const sugOrigen = document.getElementById('sugOrigen'); const sugDestino = document.getElementById('sugDestino');
