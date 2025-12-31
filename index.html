@@ -198,6 +198,21 @@ button[disabled] {
   transform: scale(1);
 }
 
+.tarifa-btn {
+  padding: 12px;
+  font-size: 14px;
+  font-weight: 600;
+  transition: all 0.3s;
+}
+
+.tarifa-btn:hover {
+  transform: scale(1.02);
+}
+
+.tarifa-btn-active {
+  color: #1f2937;
+}
+
 #map { 
   height: 350px;
   margin: 24px 0;
@@ -305,6 +320,23 @@ button[disabled] {
       <div id="sugDestino" class="suggestions" aria-hidden="true"></div>
     </div>
 
+    <div style="margin-bottom: 24px;">
+      <label class="input-label">
+        <span>🕐</span>
+        Horario
+      </label>
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+        <button type="button" id="btnDiurno" class="tarifa-btn tarifa-btn-active" style="background: linear-gradient(135deg, #fbbf24 0%, #f59e0b 100%); box-shadow: 0 4px 6px rgba(251, 191, 36, 0.3);">
+          ☀️ Diurno
+          <div style="font-size: 12px; font-weight: normal; margin-top: 4px;">7:00 - 21:00</div>
+        </button>
+        <button type="button" id="btnNocturno" class="tarifa-btn" style="background: #e5e7eb; color: #6b7280; box-shadow: none;">
+          🌙 Nocturno
+          <div style="font-size: 12px; font-weight: normal; margin-top: 4px;">21:00 - 7:00</div>
+        </button>
+      </div>
+    </div>
+
     <div class="checkbox-group">
       <label class="checkbox-label">
         <input type="checkbox" id="suplAeropuerto">
@@ -330,7 +362,7 @@ button[disabled] {
   <div class="info-card">
     <div class="info-title">📋 Información de Tarifas</div>
     <div class="info-row">
-      <span>Bajada de bandera (Tarifa 1):</span>
+      <span>Bajada de bandera (ambas tarifas):</span>
       <span>4,00 €</span>
     </div>
     <div class="info-row">
@@ -505,7 +537,45 @@ async function geocodeManual(text, input) {
 }
 
 // ================= TARIFA Y CÁLCULO =================
-function tarifaActual(now = new Date()) { const h = now.getHours(); const d = now.getDay(); if (h >= 21 || h < 7) return 2; if (d === 0) return 2; if (d === 6 && h >= 15) return 2; return 1; }
+let tarifaManual = null; // null = automática, 1 = diurna, 2 = nocturna
+
+function tarifaActual(now = new Date()) { 
+  if (tarifaManual !== null) return tarifaManual; // Usar selección manual si existe
+  const h = now.getHours(); 
+  const d = now.getDay(); 
+  if (h >= 21 || h < 7) return 2; 
+  if (d === 0) return 2; 
+  if (d === 6 && h >= 15) return 2; 
+  return 1; 
+}
+
+// Botones de tarifa
+const btnDiurno = document.getElementById('btnDiurno');
+const btnNocturno = document.getElementById('btnNocturno');
+
+btnDiurno.addEventListener('click', () => {
+  tarifaManual = 1;
+  btnDiurno.classList.add('tarifa-btn-active');
+  btnNocturno.classList.remove('tarifa-btn-active');
+  btnDiurno.style.background = 'linear-gradient(135deg, #fbbf24 0%, #f59e0b 100%)';
+  btnDiurno.style.color = '#1f2937';
+  btnDiurno.style.boxShadow = '0 4px 6px rgba(251, 191, 36, 0.3)';
+  btnNocturno.style.background = '#e5e7eb';
+  btnNocturno.style.color = '#6b7280';
+  btnNocturno.style.boxShadow = 'none';
+});
+
+btnNocturno.addEventListener('click', () => {
+  tarifaManual = 2;
+  btnNocturno.classList.add('tarifa-btn-active');
+  btnDiurno.classList.remove('tarifa-btn-active');
+  btnNocturno.style.background = 'linear-gradient(135deg, #6366f1 0%, #4f46e5 100%)';
+  btnNocturno.style.color = 'white';
+  btnNocturno.style.boxShadow = '0 4px 6px rgba(99, 102, 241, 0.3)';
+  btnDiurno.style.background = '#e5e7eb';
+  btnDiurno.style.color = '#6b7280';
+  btnDiurno.style.boxShadow = 'none';
+});
 
 async function calcular() {
   const btn = document.getElementById('btnCalcular'); const resultado = document.getElementById('resultado'); btn.disabled = true; const origVal = origenInput.value.trim(); const destVal = destinoInput.value.trim(); 
@@ -529,7 +599,7 @@ async function calcular() {
     const km = data.routes[0].distance / 1000; 
     const tarifa = tarifaActual(); 
     let precioKm = tarifa === 1 ? 1.21 : 1.47; 
-    let bajada = tarifa === 1 ? 4.00 : 0.00; 
+    let bajada = 4.00; // Ambas tarifas tienen bajada de bandera de 4€
     let total = bajada + km * precioKm; 
     if (document.getElementById('suplAeropuerto').checked) total += 2.00; 
     if (document.getElementById('suplApp').checked) total += 1.45; 
