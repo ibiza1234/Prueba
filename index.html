@@ -64,7 +64,7 @@ let routeLayer = null; let markerOrigen = null; let markerDestino = null;
 let POIS = [];
 (async function loadPOIs(){
   try {
-    const r = await fetch('/assets/pois/ibiza_pois.json');
+    const r = await fetch('Prueba/assets/pois/ibiza_pois.json');
     POIS = await r.json();
     console.log('[POIS] loaded', POIS.length);
   } catch (e) { console.warn('Could not load POIs', e); POIS = []; }
