@@ -642,14 +642,32 @@ async function calcular() {
     if (document.getElementById('suplAeropuerto').checked) {
       total += 2.00;
     }
-    if (document.getElementById('suplApp').checked) {
+    
+    const tieneSuplApp = document.getElementById('suplApp').checked;
+    if (tieneSuplApp) {
       total += 1.45;
     }
     
     console.log('ANTES:', total);
     
-    // Redondear al múltiplo de 0.10€ superior
-    total = Math.ceil(total * 10) / 10;
+    // Redondear según si tiene suplemento de app o no
+    if (tieneSuplApp) {
+      // Con app: redondear a múltiplo de 0.10€ que termine en 5
+      // Primero redondear a 0.10€ superior
+      total = Math.ceil(total * 10) / 10;
+      // Luego ajustar para que termine en X.X5
+      const centimos = Math.round((total * 100) % 10);
+      if (centimos !== 5) {
+        // Si no termina en 5, ajustar al siguiente que termine en 5
+        total = Math.floor(total * 10) / 10 + 0.05;
+        if (total * 100 % 10 !== 5) {
+          total = Math.ceil(total * 10) / 10 + 0.05;
+        }
+      }
+    } else {
+      // Sin app: redondear a múltiplo de 0.10€ que termine en 0
+      total = Math.ceil(total * 10) / 10;
+    }
     
     console.log('DESPUÉS:', total);
     
