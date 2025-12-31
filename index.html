@@ -307,7 +307,7 @@ button[disabled] {
         <span style="color: #10b981;">📍</span>
         Origen
       </label>
-      <input id="origen" type="text" placeholder="Ej: Aeropuerto de Ibiza" aria-label="Origen (Ibiza)">
+      <input id="origen" type="text" placeholder="Ej: Sant Antoni" aria-label="Origen (Ibiza)">
       <div id="sugOrigen" class="suggestions" aria-hidden="true"></div>
     </div>
 
@@ -316,7 +316,7 @@ button[disabled] {
         <span style="color: #ef4444;">📍</span>
         Destino
       </label>
-      <input id="destino" type="text" placeholder="Ej: Sant Antoni" aria-label="Destino (Ibiza)">
+      <input id="destino" type="text" placeholder="Ej: Aeropuerto de Ibiza" aria-label="Destino (Ibiza)">
       <div id="sugDestino" class="suggestions" aria-hidden="true"></div>
     </div>
 
@@ -578,41 +578,95 @@ btnNocturno.addEventListener('click', () => {
 });
 
 async function calcular() {
-  const btn = document.getElementById('btnCalcular'); const resultado = document.getElementById('resultado'); btn.disabled = true; const origVal = origenInput.value.trim(); const destVal = destinoInput.value.trim(); 
+  const btn = document.getElementById('btnCalcular');
+  const resultado = document.getElementById('resultado');
+  btn.disabled = true;
+  const origVal = origenInput.value.trim();
+  const destVal = destinoInput.value.trim();
   resultado.style.display = 'block';
   resultado.textContent = 'Calculando…';
   
-  if (!origenInput.dataset.lat) { const ok = await geocodeManual(origVal, origenInput); if (!ok) { alert('Origen no válido en Ibiza'); resultado.style.display = 'none'; btn.disabled = false; return; } }
-  if (!destinoInput.dataset.lat) { const ok = await geocodeManual(destVal, destinoInput); if (!ok) { alert('Destino no válido en Ibiza'); resultado.style.display = 'none'; btn.disabled = false; return; } }
+  if (!origenInput.dataset.lat) {
+    const ok = await geocodeManual(origVal, origenInput);
+    if (!ok) {
+      alert('Origen no válido en Ibiza');
+      resultado.style.display = 'none';
+      btn.disabled = false;
+      return;
+    }
+  }
+  
+  if (!destinoInput.dataset.lat) {
+    const ok = await geocodeManual(destVal, destinoInput);
+    if (!ok) {
+      alert('Destino no válido en Ibiza');
+      resultado.style.display = 'none';
+      btn.disabled = false;
+      return;
+    }
+  }
 
-  const lat1 = parseFloat(origenInput.dataset.lat); const lon1 = parseFloat(origenInput.dataset.lon); const lat2 = parseFloat(destinoInput.dataset.lat); const lon2 = parseFloat(destinoInput.dataset.lon);
-  if (![lat1,lon1,lat2,lon2].every(Number.isFinite)) { alert('Coordenadas no válidas'); resultado.style.display = 'none'; btn.disabled = false; return; }
+  const lat1 = parseFloat(origenInput.dataset.lat);
+  const lon1 = parseFloat(origenInput.dataset.lon);
+  const lat2 = parseFloat(destinoInput.dataset.lat);
+  const lon2 = parseFloat(destinoInput.dataset.lon);
+  
+  if (![lat1,lon1,lat2,lon2].every(Number.isFinite)) {
+    alert('Coordenadas no válidas');
+    resultado.style.display = 'none';
+    btn.disabled = false;
+    return;
+  }
 
-  if (markerOrigen) map.removeLayer(markerOrigen); markerOrigen = L.marker([lat1, lon1]).addTo(map).bindPopup('Origen').openPopup(); if (markerDestino) map.removeLayer(markerDestino); markerDestino = L.marker([lat2, lon2]).addTo(map).bindPopup('Destino');
+  if (markerOrigen) map.removeLayer(markerOrigen);
+  markerOrigen = L.marker([lat1, lon1]).addTo(map).bindPopup('Origen').openPopup();
+  if (markerDestino) map.removeLayer(markerDestino);
+  markerDestino = L.marker([lat2, lon2]).addTo(map).bindPopup('Destino');
 
   const url = `https://router.project-osrm.org/route/v1/driving/${lon1},${lat1};${lon2},${lat2}?overview=full&geometries=geojson`;
-  try { 
-    const res = await fetch(url); 
-    if (!res.ok) throw new Error('Error en el servicio de rutas'); 
-    const data = await res.json(); 
-    if (!data.routes || data.routes.length === 0) throw new Error('No se encontró ruta'); 
-    const km = data.routes[0].distance / 1000; 
-    const tarifa = tarifaActual(); 
-    let precioKm = tarifa === 1 ? 1.21 : 1.47; 
-    let bajada = 4.00; // Ambas tarifas tienen bajada de bandera de 4€
-    let total = bajada + km * precioKm; 
-    if (document.getElementById('suplAeropuerto').checked) total += 2.00; 
-    if (document.getElementById('suplApp').checked) total += 1.45; 
-    resultado.innerHTML = `<b>Tarifa aplicada:</b> ${tarifa === 1 ? 'Tarifa 1 (Diurna)' : 'Tarifa 2 (Nocturna/Festiva)'}<br><b>Distancia:</b> ${km.toFixed(2)} km<br><b>Precio estimado:</b> ${nfEuros.format(total)}`; 
-    if (routeLayer) map.removeLayer(routeLayer); 
-    routeLayer = L.geoJSON(data.routes[0].geometry, { style: { color: '#0077cc', weight: 4 } }).addTo(map); 
-    map.fitBounds(routeLayer.getBounds(), { padding: [20,20] }); 
-  } catch (err) { 
-    console.error(err); 
-    resultado.textContent = 'No se pudo calcular la ruta. Intenta más tarde.'; 
-    alert('Error al calcular la ruta: ' + (err.message || err)); 
-  } finally { 
-    btn.disabled = false; 
+  
+  try {
+    const res = await fetch(url);
+    if (!res.ok) throw new Error('Error en el servicio de rutas');
+    
+    const data = await res.json();
+    if (!data.routes || data.routes.length === 0) throw new Error('No se encontró ruta');
+    
+    const km = data.routes[0].distance / 1000;
+    const tarifa = tarifaActual();
+    const precioKm = tarifa === 1 ? 1.21 : 1.47;
+    const bajada = 4.00;
+    
+    let total = bajada + (km * precioKm);
+    
+    if (document.getElementById('suplAeropuerto').checked) {
+      total += 2.00;
+    }
+    if (document.getElementById('suplApp').checked) {
+      total += 1.45;
+    }
+    
+    console.log('ANTES:', total);
+    
+    // Redondear al múltiplo de 0.10€ superior
+    total = Math.ceil(total * 10) / 10;
+    
+    console.log('DESPUÉS:', total);
+    
+    const precioFinal = total.toFixed(2).replace('.', ',') + ' €';
+    
+    resultado.innerHTML = `<b>Tarifa aplicada:</b> ${tarifa === 1 ? 'Tarifa 1 (Diurna)' : 'Tarifa 2 (Nocturna/Festiva)'}<br><b>Distancia:</b> ${km.toFixed(2)} km<br><b>Precio estimado:</b> ${precioFinal}`;
+    
+    if (routeLayer) map.removeLayer(routeLayer);
+    routeLayer = L.geoJSON(data.routes[0].geometry, { style: { color: '#0077cc', weight: 4 } }).addTo(map);
+    map.fitBounds(routeLayer.getBounds(), { padding: [20,20] });
+    
+  } catch (err) {
+    console.error(err);
+    resultado.textContent = 'No se pudo calcular la ruta. Intenta más tarde.';
+    alert('Error al calcular la ruta: ' + (err.message || err));
+  } finally {
+    btn.disabled = false;
   }
 }
 
