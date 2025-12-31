@@ -1,0 +1,18 @@
+[
+  {"name":"Ushuaïa Ibiza Club","lat":38.9875,"lon":1.3010,"category":"discoteca","aliases":["ushuaia"]},
+  {"name":"Pacha Ibiza","lat":38.9066,"lon":1.4384,"category":"discoteca","aliases":["pacha"]},
+  {"name":"Amnesia Ibiza","lat":39.0081,"lon":1.4263,"category":"discoteca","aliases":["amnesia"]},
+  {"name":"Hotel Garbi Ibiza & Spa","lat":38.8858,"lon":1.4019,"category":"hotel","aliases":["garbi","hotel garbi"]},
+  {"name":"Hard Rock Hotel Ibiza","lat":38.8884,"lon":1.4079,"category":"hotel","aliases":["hard rock"]},
+  {"name":"Aeropuerto de Ibiza (IBZ)","lat":38.8729,"lon":1.3730,"category":"aeropuerto","aliases":["aeropuerto","ibiza airport","ibz"]},
+  {"name":"Puerto de Ibiza","lat":38.9069,"lon":1.4454,"category":"puerto","aliases":["puerto","port"]},
+  {"name":"Playa d'en Bossa","lat":38.8848,"lon":1.4031,"category":"playa","aliases":["bossa","playa bossa"]},
+  {"name":"Sant Antoni (San Antonio)","lat":38.9807,"lon":1.3025,"category":"pueblo","aliases":["san antonio","sant antoni"]},
+  {"name":"Santa Eulària des Riu","lat":38.9965,"lon":1.5245,"category":"pueblo","aliases":["santa eulalia"]},
+  {"name":"Es Vedrà","lat":38.8572,"lon":1.2187,"category":"isla","aliases":["es vedra"]},
+  {"name":"Cala Comte","lat":38.9693,"lon":1.2647,"category":"cala","aliases":["cala comte"]},
+  {"name":"Cala Bassa","lat":38.9919,"lon":1.2913,"category":"cala","aliases":["cala bassa"]},
+  {"name":"Dalt Vila (Casco antiguo)","lat":38.9065,"lon":1.4202,"category":"sitio historico","aliases":["dalt vila","daltvila"]},
+  {"name":"Playa Talamanca","lat":38.9035,"lon":1.4318,"category":"playa","aliases":["talamanca"]},
+  {"name":"Figueretas","lat":38.9011,"lon":1.4325,"category":"zona","aliases":["figueretas"]}
+]
